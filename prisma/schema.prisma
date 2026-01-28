@@ -1,0 +1,71 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// prisma/schema.prisma - Prisma 6 compatible
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  posts     Post[]
+  votes     Vote[]
+  replies   Reply[]
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  String
+  votes     Vote[]
+  replies   Reply[]
+
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model Reply {
+  id        String   @id @default(uuid())
+  text      String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  String
+  parentId  String?
+  parent    Reply?   @relation("ReplyToReply", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Reply[]  @relation("ReplyToReply")
+  votes     Vote[]
+
+  @@index([postId])
+  @@index([authorId])
+  @@index([parentId])
+}
+
+model Vote {
+  id      String  @id @default(uuid())
+  type    String  // 'up' lub 'down'
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String
+  post    Post?   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId  String?
+  reply   Reply?  @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  replyId String?
+
+  @@unique([userId, postId])
+  @@unique([userId, replyId])
+  @@index([postId])
+  @@index([replyId])
+}
