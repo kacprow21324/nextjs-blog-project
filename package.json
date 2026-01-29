@@ -4,16 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio",
-    "db:seed": "node prisma/seed.js"
+    "db:init": "node scripts/init-db.js",
+    "db:seed": "node scripts/seed.js"
   },
   "dependencies": {
-    "@prisma/client": "^6.0.0",
+    "@neondatabase/serverless": "^0.9.5",
+    "dotenv": "^17.2.3",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
@@ -25,7 +24,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^16.0.0",
-    "prisma": "^6.0.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

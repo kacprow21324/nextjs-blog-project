@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
+import { sql } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -18,9 +18,10 @@ export async function login(formData) {
     return { success: false, error: 'Wypełnij wszystkie pola' };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { username },
-  });
+  const users = await sql`
+    SELECT "id", "username", "password" FROM "User" WHERE "username" = ${username}
+  `;
+  const user = users[0];
 
   if (!user || user.password !== password) {
     return { success: false, error: 'Niepoprawne dane logowania' };
@@ -59,18 +60,18 @@ export async function register(formData) {
     return { success: false, error: 'Hasło musi mieć minimum 6 znaków' };
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { username },
-  });
+  const existingUsers = await sql`
+    SELECT "id" FROM "User" WHERE "username" = ${username}
+  `;
 
-  if (existingUser) {
+  if (existingUsers.length > 0) {
     return { success: false, error: 'Taki użytkownik już istnieje' };
   }
 
   try {
-    await prisma.user.create({
-      data: { username, password },
-    });
+    await sql`
+      INSERT INTO "User" ("username", "password") VALUES (${username}, ${password})
+    `;
 
     return { success: true, message: `Użytkownik ${username} został zarejestrowany` };
   } catch (error) {
@@ -116,12 +117,11 @@ export async function getCurrentUser() {
     return null;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { id: true, username: true, createdAt: true },
-  });
+  const users = await sql`
+    SELECT "id", "username", "createdAt" FROM "User" WHERE "id" = ${session.userId}
+  `;
 
-  return user;
+  return users[0] || null;
 }
 
 // ==================== POST ACTIONS ====================
@@ -144,13 +144,10 @@ export async function createPost(formData) {
   }
 
   try {
-    await prisma.post.create({
-      data: {
-        title,
-        content,
-        authorId: session.userId,
-      },
-    });
+    await sql`
+      INSERT INTO "Post" ("title", "content", "authorId")
+      VALUES (${title}, ${content}, ${session.userId})
+    `;
 
     revalidatePath('/');
     return { success: true };
@@ -169,10 +166,13 @@ export async function deletePost(postId) {
     return { success: false, error: 'Musisz być zalogowany' };
   }
 
-  const post = await prisma.post.findUnique({
-    where: { id: postId },
-    include: { author: true },
-  });
+  const posts = await sql`
+    SELECT p."id", p."authorId", u."username" as "authorUsername"
+    FROM "Post" p
+    JOIN "User" u ON p."authorId" = u."id"
+    WHERE p."id" = ${postId}
+  `;
+  const post = posts[0];
 
   if (!post) {
     return { success: false, error: 'Post nie istnieje' };
@@ -183,9 +183,7 @@ export async function deletePost(postId) {
     return { success: false, error: 'Brak uprawnień do usunięcia' };
   }
 
-  await prisma.post.delete({
-    where: { id: postId },
-  });
+  await sql`DELETE FROM "Post" WHERE "id" = ${postId}`;
 
   revalidatePath('/');
   return { success: true };
@@ -205,28 +203,26 @@ export async function votePost(postId, type) {
     return { success: false, error: 'Nieprawidłowy typ głosu' };
   }
 
-  const existingVote = await prisma.vote.findUnique({
-    where: {
-      userId_postId: { userId: session.userId, postId },
-    },
-  });
+  const existingVotes = await sql`
+    SELECT "id", "type" FROM "Vote" 
+    WHERE "userId" = ${session.userId} AND "postId" = ${postId}
+  `;
+  const existingVote = existingVotes[0];
 
   if (existingVote) {
     if (existingVote.type === type) {
       // Anuluj głos
-      await prisma.vote.delete({ where: { id: existingVote.id } });
+      await sql`DELETE FROM "Vote" WHERE "id" = ${existingVote.id}`;
     } else {
       // Zmień głos
-      await prisma.vote.update({
-        where: { id: existingVote.id },
-        data: { type },
-      });
+      await sql`UPDATE "Vote" SET "type" = ${type} WHERE "id" = ${existingVote.id}`;
     }
   } else {
     // Nowy głos
-    await prisma.vote.create({
-      data: { type, userId: session.userId, postId },
-    });
+    await sql`
+      INSERT INTO "Vote" ("type", "userId", "postId")
+      VALUES (${type}, ${session.userId}, ${postId})
+    `;
   }
 
   revalidatePath('/');
@@ -250,14 +246,10 @@ export async function createReply(postId, text, parentId = null) {
   }
 
   try {
-    await prisma.reply.create({
-      data: {
-        text: text.trim(),
-        postId,
-        authorId: session.userId,
-        parentId,
-      },
-    });
+    await sql`
+      INSERT INTO "Reply" ("text", "postId", "authorId", "parentId")
+      VALUES (${text.trim()}, ${postId}, ${session.userId}, ${parentId})
+    `;
 
     revalidatePath('/');
     return { success: true };
@@ -280,25 +272,23 @@ export async function voteReply(replyId, type) {
     return { success: false, error: 'Nieprawidłowy typ głosu' };
   }
 
-  const existingVote = await prisma.vote.findUnique({
-    where: {
-      userId_replyId: { userId: session.userId, replyId },
-    },
-  });
+  const existingVotes = await sql`
+    SELECT "id", "type" FROM "Vote" 
+    WHERE "userId" = ${session.userId} AND "replyId" = ${replyId}
+  `;
+  const existingVote = existingVotes[0];
 
   if (existingVote) {
     if (existingVote.type === type) {
-      await prisma.vote.delete({ where: { id: existingVote.id } });
+      await sql`DELETE FROM "Vote" WHERE "id" = ${existingVote.id}`;
     } else {
-      await prisma.vote.update({
-        where: { id: existingVote.id },
-        data: { type },
-      });
+      await sql`UPDATE "Vote" SET "type" = ${type} WHERE "id" = ${existingVote.id}`;
     }
   } else {
-    await prisma.vote.create({
-      data: { type, userId: session.userId, replyId },
-    });
+    await sql`
+      INSERT INTO "Vote" ("type", "userId", "replyId")
+      VALUES (${type}, ${session.userId}, ${replyId})
+    `;
   }
 
   revalidatePath('/');
@@ -311,24 +301,63 @@ export async function voteReply(replyId, type) {
  * Pobieranie wszystkich postów z autorami, głosami i odpowiedziami
  */
 export async function getPosts() {
-  const posts = await prisma.post.findMany({
-    include: {
-      author: {
-        select: { id: true, username: true },
-      },
-      votes: true,
-      replies: {
-        include: {
-          author: {
-            select: { id: true, username: true },
-          },
-          votes: true,
-        },
-        orderBy: { createdAt: 'asc' },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  // Pobierz posty z autorami
+  const posts = await sql`
+    SELECT 
+      p."id", p."title", p."content", p."createdAt", p."updatedAt", p."authorId",
+      u."id" as "author_id", u."username" as "author_username"
+    FROM "Post" p
+    JOIN "User" u ON p."authorId" = u."id"
+    ORDER BY p."createdAt" DESC
+  `;
 
-  return posts;
+  // Pobierz wszystkie głosy na posty
+  const postVotes = await sql`
+    SELECT "id", "type", "userId", "postId" FROM "Vote" WHERE "postId" IS NOT NULL
+  `;
+
+  // Pobierz wszystkie odpowiedzi z autorami
+  const replies = await sql`
+    SELECT 
+      r."id", r."text", r."createdAt", r."postId", r."authorId", r."parentId",
+      u."id" as "author_id", u."username" as "author_username"
+    FROM "Reply" r
+    JOIN "User" u ON r."authorId" = u."id"
+    ORDER BY r."createdAt" ASC
+  `;
+
+  // Pobierz wszystkie głosy na odpowiedzi
+  const replyVotes = await sql`
+    SELECT "id", "type", "userId", "replyId" FROM "Vote" WHERE "replyId" IS NOT NULL
+  `;
+
+  // Złóż dane w strukturę podobną do Prisma
+  return posts.map(post => ({
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+    authorId: post.authorId,
+    author: {
+      id: post.author_id,
+      username: post.author_username,
+    },
+    votes: postVotes.filter(v => v.postId === post.id),
+    replies: replies
+      .filter(r => r.postId === post.id)
+      .map(reply => ({
+        id: reply.id,
+        text: reply.text,
+        createdAt: reply.createdAt,
+        postId: reply.postId,
+        authorId: reply.authorId,
+        parentId: reply.parentId,
+        author: {
+          id: reply.author_id,
+          username: reply.author_username,
+        },
+        votes: replyVotes.filter(v => v.replyId === reply.id),
+      })),
+  }));
 }
