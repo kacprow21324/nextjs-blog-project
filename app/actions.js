@@ -107,9 +107,6 @@ export async function getSession() {
   }
 }
 
-/**
- * Pobiera pełne dane zalogowanego użytkownika
- */
 export async function getCurrentUser() {
   const session = await getSession();
   
@@ -121,7 +118,13 @@ export async function getCurrentUser() {
     SELECT "id", "username", "createdAt" FROM "User" WHERE "id" = ${session.userId}
   `;
 
-  return users[0] || null;
+  if (!users[0]) return null;
+  
+  return {
+    id: users[0].id,
+    username: users[0].username,
+    createdAt: users[0].createdAt ? users[0].createdAt.toISOString() : null
+  };
 }
 
 // ==================== POST ACTIONS ====================
@@ -298,6 +301,88 @@ export async function voteReply(replyId, type) {
 // ==================== DATA FETCHING ====================
 
 /**
+ * Pomocnicza funkcja slugify
+ */
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+}
+
+/**
+ * Pobieranie posta po slug (tytuł zamieniony na URL)
+ */
+export async function getPostBySlug(slug) {
+  // Pobierz wszystkie posty
+  const posts = await sql`
+    SELECT 
+      p."id", p."title", p."content", p."createdAt", p."updatedAt", p."authorId",
+      u."id" as "author_id", u."username" as "author_username"
+    FROM "Post" p
+    JOIN "User" u ON p."authorId" = u."id"
+  `;
+
+  // Znajdź post o pasującym slug
+  const post = posts.find(p => slugify(p.title) === slug);
+  
+  if (!post) {
+    return null;
+  }
+
+  // Pobierz głosy na ten post
+  const postVotes = await sql`
+    SELECT "id", "type", "userId", "postId" FROM "Vote" WHERE "postId" = ${post.id}
+  `;
+
+  // Pobierz odpowiedzi z autorami
+  const replies = await sql`
+    SELECT 
+      r."id", r."text", r."createdAt", r."postId", r."authorId", r."parentId",
+      u."id" as "author_id", u."username" as "author_username"
+    FROM "Reply" r
+    JOIN "User" u ON r."authorId" = u."id"
+    WHERE r."postId" = ${post.id}
+    ORDER BY r."createdAt" ASC
+  `;
+
+  // Pobierz głosy na odpowiedzi
+  const replyIds = replies.map(r => r.id);
+  const replyVotes = replyIds.length > 0 ? await sql`
+    SELECT "id", "type", "userId", "replyId" FROM "Vote" WHERE "replyId" = ANY(${replyIds})
+  ` : [];
+
+  return {
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+    authorId: post.authorId,
+    author: {
+      id: post.author_id,
+      username: post.author_username,
+    },
+    votes: postVotes,
+    replies: replies.map(reply => ({
+      id: reply.id,
+      text: reply.text,
+      createdAt: reply.createdAt,
+      postId: reply.postId,
+      authorId: reply.authorId,
+      parentId: reply.parentId,
+      author: {
+        id: reply.author_id,
+        username: reply.author_username,
+      },
+      votes: replyVotes.filter(v => v.replyId === reply.id),
+    })),
+  };
+}
+
+/**
  * Pobieranie wszystkich postów z autorami, głosami i odpowiedziami
  */
 export async function getPosts() {
@@ -360,4 +445,133 @@ export async function getPosts() {
         votes: replyVotes.filter(v => v.replyId === reply.id),
       })),
   }));
+}
+
+/**
+ * Pobiera losowe/popularne posty (do wyświetlenia na stronie głównej)
+ */
+export async function getRandomPosts(limit = 3) {
+  const posts = await sql`
+    SELECT 
+      p."id", p."title", p."content", p."createdAt", p."authorId",
+      u."id" as "author_id", u."username" as "author_username"
+    FROM "Post" p
+    JOIN "User" u ON p."authorId" = u."id"
+    ORDER BY RANDOM()
+    LIMIT ${limit}
+  `;
+
+  const postIds = posts.map(p => p.id);
+  
+  if (postIds.length === 0) {
+    return [];
+  }
+
+  const postVotes = await sql`
+    SELECT "id", "type", "postId" FROM "Vote" WHERE "postId" = ANY(${postIds})
+  `;
+
+  const replies = await sql`
+    SELECT "id", "postId" FROM "Reply" WHERE "postId" = ANY(${postIds})
+  `;
+
+  return posts.map(post => ({
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    createdAt: post.createdAt,
+    authorId: post.authorId,
+    author: {
+      id: post.author_id,
+      username: post.author_username,
+    },
+    votes: postVotes.filter(v => v.postId === post.id),
+    replies: replies.filter(r => r.postId === post.id),
+  }));
+}
+
+/**
+ * Pobiera użytkownika po username
+ */
+export async function getUserByUsername(username) {
+  const users = await sql`
+    SELECT "id", "username", "createdAt" FROM "User" WHERE "username" = ${username}
+  `;
+  return users[0] || null;
+}
+
+/**
+ * Pobiera wszystkie posty danego użytkownika
+ */
+export async function getUserPosts(userId) {
+  const posts = await sql`
+    SELECT 
+      p."id", p."title", p."content", p."createdAt", p."authorId",
+      u."username" as "author_username"
+    FROM "Post" p
+    JOIN "User" u ON p."authorId" = u."id"
+    WHERE p."authorId" = ${userId}
+    ORDER BY p."createdAt" DESC
+  `;
+
+  const postIds = posts.map(p => p.id);
+  
+  if (postIds.length === 0) {
+    return [];
+  }
+
+  const postVotes = await sql`
+    SELECT "id", "type", "postId" FROM "Vote" WHERE "postId" = ANY(${postIds})
+  `;
+
+  const replies = await sql`
+    SELECT "id", "postId" FROM "Reply" WHERE "postId" = ANY(${postIds})
+  `;
+
+  return posts.map(post => ({
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    createdAt: post.createdAt,
+    authorId: post.authorId,
+    votes: postVotes.filter(v => v.postId === post.id),
+    replies: replies.filter(r => r.postId === post.id),
+  }));
+}
+
+/**
+ * Pobiera wszystkie odpowiedzi danego użytkownika wraz z tytułami postów
+ */
+export async function getUserReplies(userId) {
+  const replies = await sql`
+    SELECT 
+      r."id", r."text", r."createdAt", r."postId",
+      p."title" as "postTitle"
+    FROM "Reply" r
+    LEFT JOIN "Post" p ON r."postId" = p."id"
+    WHERE r."authorId" = ${userId}
+    ORDER BY r."createdAt" DESC
+  `;
+
+  return replies.map(reply => ({
+    id: reply.id,
+    text: reply.text,
+    createdAt: reply.createdAt,
+    postId: reply.postId,
+    postTitle: reply.postTitle,
+  }));
+}
+
+/**
+ * Oblicza łączną liczbę polubień (upvotes) dla wszystkich postów użytkownika
+ */
+export async function getUserTotalLikes(userId) {
+  const result = await sql`
+    SELECT COUNT(*) as "totalLikes"
+    FROM "Vote" v
+    JOIN "Post" p ON v."postId" = p."id"
+    WHERE p."authorId" = ${userId} AND v."type" = 'up'
+  `;
+  
+  return parseInt(result[0]?.totalLikes || '0', 10);
 }

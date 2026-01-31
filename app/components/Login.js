@@ -19,9 +19,7 @@ export default function LoginForm() {
       if (result?.success === false) {
         setError(result.error || 'Błąd logowania');
       }
-      // Sukces - redirect obsługiwany przez server action
     } catch (err) {
-      // Redirect from server action throws, ignore it
     } finally {
       setLoading(false);
     }

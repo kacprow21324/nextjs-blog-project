@@ -20,7 +20,6 @@ export default function RegisterForm() {
       
       if (result.success) {
         setSuccess(result.message);
-        // Przekieruj po 2 sekundach
         setTimeout(() => router.push('/login'), 2000);
       } else {
         setError(result.error || 'Błąd rejestracji');

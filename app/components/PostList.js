@@ -1,8 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import PostThread from './PostThread';
 import { votePost, deletePost } from '@/app/actions';
+
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+}
 
 export default function PostList({ posts, currentUser }) {
   const [openPostId, setOpenPostId] = useState(null);
@@ -33,6 +43,7 @@ export default function PostList({ posts, currentUser }) {
       ) : (
         posts.map(p => {
           const isOpen = openPostId === p.id;
+          const postSlug = slugify(p.title);
           
           const upvotes = p.votes?.filter(v => v.type === 'up').length || 0;
           const downvotes = p.votes?.filter(v => v.type === 'down').length || 0;
@@ -57,15 +68,17 @@ export default function PostList({ posts, currentUser }) {
                 >
                   {isOpen ? '▲' : '▼'}
                 </button>
-                <h3>{p.title}</h3>
+                <Link href={`/posts/${postSlug}`} className="post-title-link">
+                  <h3>{p.title}</h3>
+                </Link>
               </div>
 
-              <p className="post-author">Autor: {p.author?.username || 'Nieznany'}</p>
+              <p className="post-author">Autor: <Link href={`/${p.author?.username}`}>{p.author?.username || 'Nieznany'}</Link></p>
 
               <p className="post-content">{p.content}</p>
 
               <div className="post-footer">
-                <span className="post-score-label">Ocena:</span>
+                <span className="post-score-label">Polubienia:</span>
                 <span className={`post-score ${score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral'}`}>
                   {score > 0 ? '+' : ''}{score}
                 </span>

@@ -18,7 +18,6 @@ export default function NewPostForm() {
       if (result?.success === false) {
         setError(result.error || 'Błąd podczas dodawania posta');
       } else {
-        // Wyczyść formularz
         formRef.current?.reset();
       }
     } catch (err) {

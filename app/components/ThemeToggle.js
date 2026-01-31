@@ -44,7 +44,7 @@ export default function ThemeToggle() {
   if (!mounted) {
     return (
       <button className="theme-toggle" aria-label="Zmień motyw" disabled>
-        NOCNY
+        Motyw
       </button>
     );
   }
@@ -56,7 +56,7 @@ export default function ThemeToggle() {
       aria-label={theme === 'dark' ? 'Włącz jasny motyw' : 'Włącz ciemny motyw'}
       title={theme === 'dark' ? 'Włącz jasny motyw' : 'Włącz ciemny motyw'}
     >
-      {theme === 'dark' ? 'D' : 'N'}
+      {theme === 'dark' ? 'Jasny' : 'Ciemny'}
     </button>
   );
 }
