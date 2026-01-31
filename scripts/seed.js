@@ -1,8 +1,8 @@
 import { neon } from '@neondatabase/serverless';
 
-// Załaduj zmienne środowiskowe z .env.local
+// Załaduj zmienne środowiskowe z .env
 import { config } from 'dotenv';
-config({ path: '.env.local' });
+config({ path: '.env' });
 
 const sql = neon(process.env.DATABASE_URL);
 
