@@ -59,8 +59,8 @@ export default async function HomePage() {
         <div className="featured-posts">
           {featuredPosts.length > 0 ? (
             featuredPosts.map((post) => {
-              const upvotes = post.votes?.filter((v: { type: string }) => v.type === 'up').length || 0;
-              const downvotes = post.votes?.filter((v: { type: string }) => v.type === 'down').length || 0;
+              const upvotes = post.votes?.filter((v: any) => v.type === 'up').length || 0;
+              const downvotes = post.votes?.filter((v: any) => v.type === 'down').length || 0;
               const score = upvotes - downvotes;
               
               return (
